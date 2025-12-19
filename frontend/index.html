@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Golf Game - 강화학습 골프</title>
+    <meta name="description" content="Stable-Baselines3로 학습하는 AI 골프 게임">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>🏌️ AI Golf Game</h1>
+            <p class="subtitle">Reinforcement Learning with Stable-Baselines3</p>
+        </header>
+
+        <main class="main-content">
+            <div class="game-section">
+                <div class="canvas-container">
+                    <canvas id="gameCanvas" width="500" height="600"></canvas>
+                    <div class="game-overlay" id="gameOverlay">
+                        <div class="overlay-content">
+                            <h2 id="overlayTitle">🎉 Hole in One!</h2>
+                            <p id="overlayMessage">Shots: <span id="shotCount">0</span></p>
+                            <button class="btn btn-primary" id="restartBtn">Play Again</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="game-info">
+                    <div class="info-card">
+                        <span class="info-label">Shots</span>
+                        <span class="info-value" id="currentShots">0</span>
+                    </div>
+                    <div class="info-card">
+                        <span class="info-label">Distance</span>
+                        <span class="info-value" id="distanceToHole">0m</span>
+                    </div>
+                    <div class="info-card">
+                        <span class="info-label">Best</span>
+                        <span class="info-value" id="bestScore">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <div class="control-panel">
+                    <h3>🎮 Game Controls</h3>
+                    <div class="mode-toggle">
+                        <button class="btn btn-mode active" id="humanModeBtn">👤 Human</button>
+                        <button class="btn btn-mode" id="aiModeBtn">🤖 AI Mode</button>
+                    </div>
+                    <p class="help-text" id="helpText">Drag from the ball to aim and release to shoot!</p>
+                </div>
+
+                <div class="ai-panel">
+                    <h3>🧠 AI Training</h3>
+                    <div class="training-status">
+                        <div class="status-indicator" id="statusIndicator"></div>
+                        <span id="trainingStatus">Ready to train</span>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                    <div class="training-stats">
+                        <div class="stat">
+                            <span class="stat-label">Episodes</span>
+                            <span class="stat-value" id="episodeCount">0</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Avg Reward</span>
+                            <span class="stat-value" id="avgReward">0.00</span>
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-success" id="trainBtn">▶️ Start Training</button>
+                        <button class="btn btn-danger" id="stopBtn" disabled>⏹️ Stop</button>
+                    </div>
+                </div>
+
+                <div class="settings-panel">
+                    <h3>⚙️ Settings</h3>
+                    <div class="setting-item">
+                        <label for="learningRate">Learning Rate</label>
+                        <input type="number" id="learningRate" value="0.0003" step="0.0001" min="0.0001" max="0.01">
+                    </div>
+                    <div class="setting-item">
+                        <label for="totalTimesteps">Training Steps</label>
+                        <input type="number" id="totalTimesteps" value="10000" step="1000" min="1000" max="1000000">
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>Powered by FastAPI + Stable-Baselines3 (PPO)</p>
+        </footer>
+    </div>
+
+    <script src="game.js"></script>
+    <script src="api.js"></script>
+</body>
+</html>

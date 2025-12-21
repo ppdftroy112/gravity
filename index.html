@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Golf Game - Static (ONNX)</title>
+    <meta name="description" content="AI 골프 게임 - 브라우저에서 직접 실행되는 ONNX 모델">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0f1a;
+            --bg-secondary: #111827;
+            --bg-card: rgba(30, 41, 59, 0.8);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-primary: #22c55e;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-red: #ef4444;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --radius-md: 12px;
+            --radius-lg: 20px;
+            --font-family: 'Inter', -apple-system, sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            background-image:
+                radial-gradient(ellipse at top, rgba(34, 197, 94, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+        }
+
+        .app-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            margin-top: 10px;
+        }
+
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            flex: 1;
+        }
+
+        .canvas-container {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+        }
+
+        #gameCanvas {
+            display: block;
+            border-radius: var(--radius-md);
+            cursor: crosshair;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-primary), #16a34a);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .info-bar {
+            display: flex;
+            gap: 20px;
+            background: var(--bg-card);
+            padding: 15px 25px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        }
+
+        .info-item {
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .info-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+        }
+
+        .status-bar {
+            padding: 10px 20px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .status-dot.ready {
+            background: var(--accent-primary);
+        }
+
+        .status-dot.loading {
+            background: var(--accent-blue);
+            animation: pulse 1s infinite;
+        }
+
+        .status-dot.error {
+            background: var(--accent-red);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .game-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            bottom: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            border-radius: var(--radius-md);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        .game-overlay.active {
+            display: flex;
+        }
+
+        .overlay-title {
+            font-size: 1.8rem;
+            color: var(--accent-primary);
+            margin-bottom: 10px;
+        }
+
+        .overlay-msg {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px 0;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="header">
+            <h1>🏌️ AI Golf Game</h1>
+            <p class="subtitle">No server required - runs entirely in your browser!</p>
+            <span class="badge">🧠 ONNX Runtime Web</span>
+        </header>
+
+        <main class="main-content">
+            <div class="status-bar">
+                <div class="status-dot loading" id="statusDot"></div>
+                <span id="statusText">Loading ONNX model...</span>
+            </div>
+
+            <div class="canvas-container" style="position: relative;">
+                <canvas id="gameCanvas" width="500" height="600"></canvas>
+                <div class="game-overlay" id="gameOverlay">
+                    <h2 class="overlay-title" id="overlayTitle">🎉 Complete!</h2>
+                    <p class="overlay-msg">Shots: <span id="shotCount">0</span></p>
+                    <button class="btn btn-primary" id="restartBtn">Play Again</button>
+                </div>
+            </div>
+
+            <div class="info-bar">
+                <div class="info-item">
+                    <div class="info-label">Shots</div>
+                    <div class="info-value" id="currentShots">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Distance</div>
+                    <div class="info-value" id="distanceToHole">0m</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Best</div>
+                    <div class="info-value" id="bestScore">-</div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button class="btn btn-secondary" id="humanModeBtn">👤 Human Mode</button>
+                <button class="btn btn-primary" id="aiModeBtn">🤖 AI Play</button>
+                <button class="btn btn-secondary" id="resetBtn">🔄 New Hole</button>
+            </div>
+        </main>
+
+        <footer class="footer">
+            Static page powered by ONNX Runtime Web - No backend needed!
+        </footer>
+    </div>
+
+    <script>
+        // ===========================
+        // ONNX Golf Game - Static Version
+        // ===========================
+
+        class OnnxGolfGame {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.width = this.canvas.width;
+                this.height = this.canvas.height;
+
+                // Game state
+                this.isAIMode = false;
+                this.isPlaying = true;
+                this.shots = 0;
+                this.bestScore = null;
+
+                // Ball
+                this.ball = { x: this.width / 2, y: this.height - 80, radius: 8, vx: 0, vy: 0, isMoving: false };
+
+                // Hole
+                this.hole = { x: this.width / 2, y: 80, radius: 14 };
+
+                // Aiming
+                this.isDragging = false;
+                this.dragStart = { x: 0, y: 0 };
+                this.dragEnd = { x: 0, y: 0 };
+                this.maxPower = 25;
+
+                // Physics
+                this.friction = 0.985;
+                this.minVelocity = 0.1;
+
+                // ONNX
+                this.session = null;
+                this.modelLoaded = false;
+
+                this.init();
+            }
+
+            async init() {
+                this.setupEventListeners();
+                await this.loadModel();
+                this.randomizeHole();
+                this.gameLoop();
+            }
+
+            async loadModel() {
+                try {
+                    this.updateStatus('loading', 'Loading ONNX model...');
+
+                    // Configure ONNX Runtime Web for better compatibility
+                    ort.env.wasm.numThreads = 1;
+                    ort.env.wasm.simd = true;
+
+                    // Fetch model as ArrayBuffer for better compatibility
+                    const response = await fetch('./golf_agent.onnx');
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch model file');
+                    }
+                    const modelBuffer = await response.arrayBuffer();
+
+                    this.session = await ort.InferenceSession.create(modelBuffer, {
+                        executionProviders: ['wasm'],
+                        graphOptimizationLevel: 'all'
+                    });
+
+                    this.modelLoaded = true;
+                    this.updateStatus('ready', 'Model loaded! Ready to play.');
+                    console.log('ONNX model loaded successfully');
+                } catch (error) {
+                    console.error('Failed to load ONNX model:', error);
+                    this.updateStatus('error', 'Model load failed. Human mode only.');
+                }
+            }
+
+            updateStatus(status, text) {
+                document.getElementById('statusDot').className = 'status-dot ' + status;
+                document.getElementById('statusText').textContent = text;
+            }
+
+            setupEventListeners() {
+                this.canvas.addEventListener('mousedown', e => this.handleMouseDown(e));
+                this.canvas.addEventListener('mousemove', e => this.handleMouseMove(e));
+                this.canvas.addEventListener('mouseup', e => this.handleMouseUp(e));
+                this.canvas.addEventListener('mouseleave', e => this.handleMouseUp(e));
+
+                this.canvas.addEventListener('touchstart', e => { e.preventDefault(); this.handleMouseDown(this.touchToMouse(e)); });
+                this.canvas.addEventListener('touchmove', e => { e.preventDefault(); this.handleMouseMove(this.touchToMouse(e)); });
+                this.canvas.addEventListener('touchend', e => { e.preventDefault(); this.handleMouseUp(e); });
+
+                document.getElementById('humanModeBtn').addEventListener('click', () => this.setMode(false));
+                document.getElementById('aiModeBtn').addEventListener('click', () => this.aiPlay());
+                document.getElementById('resetBtn').addEventListener('click', () => this.restart());
+                document.getElementById('restartBtn').addEventListener('click', () => this.restart());
+            }
+
+            touchToMouse(e) {
+                const t = e.touches[0];
+                return { clientX: t.clientX, clientY: t.clientY };
+            }
+
+            getMousePos(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            }
+
+            handleMouseDown(e) {
+                if (this.ball.isMoving || !this.isPlaying) return;
+                const pos = this.getMousePos(e);
+                if (Math.hypot(pos.x - this.ball.x, pos.y - this.ball.y) < 50) {
+                    this.isDragging = true;
+                    this.dragStart = { x: this.ball.x, y: this.ball.y };
+                    this.dragEnd = pos;
+                }
+            }
+
+            handleMouseMove(e) {
+                if (!this.isDragging) return;
+                this.dragEnd = this.getMousePos(e);
+            }
+
+            handleMouseUp(e) {
+                if (!this.isDragging) return;
+                this.isDragging = false;
+                this.shoot();
+            }
+
+            shoot() {
+                const dx = this.dragStart.x - this.dragEnd.x;
+                const dy = this.dragStart.y - this.dragEnd.y;
+                const power = Math.min(Math.hypot(dx, dy) / 10, this.maxPower);
+                if (power < 0.5) return;
+
+                const angle = Math.atan2(dy, dx);
+                this.ball.vx = Math.cos(angle) * power;
+                this.ball.vy = Math.sin(angle) * power;
+                this.ball.isMoving = true;
+                this.shots++;
+                this.updateUI();
+            }
+
+            async aiPlay() {
+                if (!this.modelLoaded) {
+                    alert('Model not loaded!');
+                    return;
+                }
+                if (this.ball.isMoving || !this.isPlaying) return;
+
+                this.updateStatus('loading', 'AI is thinking...');
+
+                try {
+                    // Prepare observation
+                    const distance = Math.hypot(this.ball.x - this.hole.x, this.ball.y - this.hole.y);
+                    const maxDist = Math.hypot(this.width, this.height);
+
+                    const obs = new Float32Array([
+                        this.ball.x / this.width,
+                        this.ball.y / this.height,
+                        this.hole.x / this.width,
+                        this.hole.y / this.height,
+                        distance / maxDist
+                    ]);
+
+                    const inputTensor = new ort.Tensor('float32', obs, [1, 5]);
+                    const results = await this.session.run({ observation: inputTensor });
+                    const action = results.action.data;
+
+                    // Parse action
+                    const angle = action[0] * 90; // -90 to 90
+                    const power = Math.max(0, Math.min(1, action[1]));
+
+                    // Execute shot
+                    const finalAngle = (-90 + angle) * Math.PI / 180;
+                    const shotPower = power * this.maxPower;
+
+                    this.ball.vx = Math.cos(finalAngle) * shotPower;
+                    this.ball.vy = Math.sin(finalAngle) * shotPower;
+                    this.ball.isMoving = true;
+                    this.shots++;
+
+                    this.updateStatus('ready', `AI shot: angle=${angle.toFixed(1)}°, power=${(power * 100).toFixed(0)}%`);
+                    this.updateUI();
+
+                } catch (error) {
+                    console.error('AI prediction failed:', error);
+                    this.updateStatus('error', 'AI prediction failed');
+                }
+            }
+
+            setMode(isAI) {
+                this.isAIMode = isAI;
+            }
+
+            update() {
+                if (!this.ball.isMoving) return;
+
+                this.ball.x += this.ball.vx;
+                this.ball.y += this.ball.vy;
+                this.ball.vx *= this.friction;
+                this.ball.vy *= this.friction;
+
+                // Boundary collision
+                if (this.ball.x < this.ball.radius) { this.ball.x = this.ball.radius; this.ball.vx *= -0.8; }
+                if (this.ball.x > this.width - this.ball.radius) { this.ball.x = this.width - this.ball.radius; this.ball.vx *= -0.8; }
+                if (this.ball.y < this.ball.radius) { this.ball.y = this.ball.radius; this.ball.vy *= -0.8; }
+                if (this.ball.y > this.height - this.ball.radius) { this.ball.y = this.height - this.ball.radius; this.ball.vy *= -0.8; }
+
+                if (Math.hypot(this.ball.vx, this.ball.vy) < this.minVelocity) {
+                    this.ball.vx = 0;
+                    this.ball.vy = 0;
+                    this.ball.isMoving = false;
+                    this.checkHole();
+                }
+            }
+
+            checkHole() {
+                const dist = Math.hypot(this.ball.x - this.hole.x, this.ball.y - this.hole.y);
+                if (dist < this.hole.radius) {
+                    this.isPlaying = false;
+                    this.showOverlay();
+                    if (this.bestScore === null || this.shots < this.bestScore) {
+                        this.bestScore = this.shots;
+                    }
+                    this.updateUI();
+                }
+            }
+
+            showOverlay() {
+                const overlay = document.getElementById('gameOverlay');
+                const title = document.getElementById('overlayTitle');
+                title.textContent = this.shots === 1 ? '🎉 Hole in One!' : this.shots <= 3 ? '⭐ Excellent!' : '✅ Complete!';
+                document.getElementById('shotCount').textContent = this.shots;
+                overlay.classList.add('active');
+            }
+
+            restart() {
+                this.ball = { x: this.width / 2, y: this.height - 80, radius: 8, vx: 0, vy: 0, isMoving: false };
+                this.randomizeHole();
+                this.shots = 0;
+                this.isPlaying = true;
+                document.getElementById('gameOverlay').classList.remove('active');
+                this.updateUI();
+            }
+
+            randomizeHole() {
+                this.hole.x = 100 + Math.random() * (this.width - 200);
+                this.hole.y = 60 + Math.random() * 100;
+            }
+
+            updateUI() {
+                document.getElementById('currentShots').textContent = this.shots;
+                const dist = Math.hypot(this.ball.x - this.hole.x, this.ball.y - this.hole.y);
+                document.getElementById('distanceToHole').textContent = Math.round(dist / 10) + 'm';
+                document.getElementById('bestScore').textContent = this.bestScore !== null ? this.bestScore : '-';
+            }
+
+            render() {
+                const ctx = this.ctx;
+
+                // Background
+                const gradient = ctx.createLinearGradient(0, 0, 0, this.height);
+                gradient.addColorStop(0, '#15803d');
+                gradient.addColorStop(0.5, '#16a34a');
+                gradient.addColorStop(1, '#15803d');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, this.width, this.height);
+
+                // Rough edges
+                ctx.fillStyle = '#14532d';
+                ctx.fillRect(0, 0, 30, this.height);
+                ctx.fillRect(this.width - 30, 0, 30, this.height);
+
+                // Green
+                ctx.beginPath();
+                ctx.ellipse(this.hole.x, this.hole.y, 80, 60, 0, 0, Math.PI * 2);
+                ctx.fillStyle = '#22c55e';
+                ctx.fill();
+
+                // Hole
+                ctx.beginPath();
+                ctx.arc(this.hole.x, this.hole.y, this.hole.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fill();
+
+                // Flag
+                ctx.beginPath();
+                ctx.moveTo(this.hole.x, this.hole.y);
+                ctx.lineTo(this.hole.x, this.hole.y - 50);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(this.hole.x, this.hole.y - 50);
+                ctx.lineTo(this.hole.x + 25, this.hole.y - 40);
+                ctx.lineTo(this.hole.x, this.hole.y - 30);
+                ctx.closePath();
+                ctx.fillStyle = '#ef4444';
+                ctx.fill();
+
+                // Tee
+                ctx.beginPath();
+                ctx.ellipse(this.width / 2, this.height - 80, 40, 30, 0, 0, Math.PI * 2);
+                ctx.fillStyle = '#22c55e';
+                ctx.fill();
+
+                // Aim line
+                if (this.isDragging && !this.ball.isMoving) {
+                    const dx = this.dragStart.x - this.dragEnd.x;
+                    const dy = this.dragStart.y - this.dragEnd.y;
+                    const power = Math.min(Math.hypot(dx, dy) / 10, this.maxPower) / this.maxPower;
+
+                    ctx.beginPath();
+                    ctx.setLineDash([5, 5]);
+                    ctx.moveTo(this.ball.x, this.ball.y);
+                    ctx.lineTo(this.ball.x + dx * 2, this.ball.y + dy * 2);
+                    ctx.strokeStyle = `hsl(${120 - power * 120}, 80%, 50%)`;
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 14px Inter';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(Math.round(power * 100) + '%', this.dragEnd.x, this.dragEnd.y - 20);
+                }
+
+                // Ball shadow
+                ctx.beginPath();
+                ctx.ellipse(this.ball.x + 3, this.ball.y + 3, this.ball.radius, this.ball.radius * 0.6, 0, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fill();
+
+                // Ball
+                const ballGrad = ctx.createRadialGradient(this.ball.x - 2, this.ball.y - 2, 0, this.ball.x, this.ball.y, this.ball.radius);
+                ballGrad.addColorStop(0, '#fff');
+                ballGrad.addColorStop(1, '#d0d0d0');
+                ctx.beginPath();
+                ctx.arc(this.ball.x, this.ball.y, this.ball.radius, 0, Math.PI * 2);
+                ctx.fillStyle = ballGrad;
+                ctx.fill();
+            }
+
+            gameLoop() {
+                this.update();
+                this.render();
+                requestAnimationFrame(() => this.gameLoop());
+            }
+        }
+
+        // Initialize
+        const game = new OnnxGolfGame();
+    </script>
+</body>
+
+</html>

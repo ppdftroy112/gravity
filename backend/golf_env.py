@@ -39,6 +39,10 @@ class GolfEnv(gym.Env):
         self.max_power = 25
         self.ball_radius = 8
         self.hole_radius = 14
+
+        # Slope Physics (Gravity Well)
+        self.slope_radius = 60
+        self.slope_gravity = 0.2
         
         # Max steps per episode
         self.max_steps = 20
@@ -116,6 +120,18 @@ class GolfEnv(gym.Env):
         velocity = np.array([vx, vy], dtype=np.float32)
         
         while np.linalg.norm(velocity) > self.min_velocity:
+            # Apply slope physics (gravity well around hole)
+            d_vec = self.hole_pos - self.ball_pos
+            dist = np.linalg.norm(d_vec)
+            
+            if dist < self.slope_radius:
+                # Force direction (normalized vector to hole)
+                force_dir = d_vec / (dist + 1e-6)
+                # Force magnitude (stronger closer to hole)
+                force_mag = self.slope_gravity * (1 - dist / self.slope_radius)
+                
+                velocity += force_dir * force_mag
+
             # Update position
             self.ball_pos += velocity
             

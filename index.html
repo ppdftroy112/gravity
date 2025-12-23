@@ -331,6 +331,8 @@
                 // Physics
                 this.friction = 0.985;
                 this.minVelocity = 0.1;
+                this.slopeRadius = 60;
+                this.slopeGravity = 0.2;
 
                 // ONNX
                 this.session = null;
@@ -496,6 +498,18 @@
             update() {
                 if (!this.ball.isMoving) return;
 
+                // Apply slope physics
+                const dx = this.hole.x - this.ball.x;
+                const dy = this.hole.y - this.ball.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist < this.slopeRadius) {
+                    const forceMag = this.slopeGravity * (1 - dist / this.slopeRadius);
+                    const angle = Math.atan2(dy, dx);
+                    this.ball.vx += Math.cos(angle) * forceMag;
+                    this.ball.vy += Math.sin(angle) * forceMag;
+                }
+
                 this.ball.x += this.ball.vx;
                 this.ball.y += this.ball.vy;
                 this.ball.vx *= this.friction;
@@ -576,6 +590,15 @@
                 ctx.beginPath();
                 ctx.ellipse(this.hole.x, this.hole.y, 80, 60, 0, 0, Math.PI * 2);
                 ctx.fillStyle = '#22c55e';
+                ctx.fill();
+
+                // Slope Visual
+                const slopeGrad = ctx.createRadialGradient(this.hole.x, this.hole.y, this.hole.radius, this.hole.x, this.hole.y, this.slopeRadius);
+                slopeGrad.addColorStop(0, 'rgba(0,0,0,0.3)');
+                slopeGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.beginPath();
+                ctx.arc(this.hole.x, this.hole.y, this.slopeRadius, 0, Math.PI * 2);
+                ctx.fillStyle = slopeGrad;
                 ctx.fill();
 
                 // Hole

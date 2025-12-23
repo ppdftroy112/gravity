@@ -334,6 +334,8 @@
                 this.wellSigma = 40.0;
                 this.wellDepth = 20.0;
                 this.gravityScale = 1.0;
+                this.maxHoleEntryVelocity = 20.0;
+                this.isFalling = false; // Animation state
 
                 // ONNX
                 this.session = null;
@@ -497,6 +499,26 @@
             }
 
             update() {
+                // Falling animation
+                if (this.isFalling) {
+                    // Lerp to center
+                    this.ball.x += (this.hole.x - this.ball.x) * 0.2;
+                    this.ball.y += (this.hole.y - this.ball.y) * 0.2;
+                    // Shrink
+                    this.ball.radius = Math.max(0, this.ball.radius - 0.5);
+
+                    if (this.ball.radius < 0.5) {
+                        this.isFalling = false;
+                        this.isPlaying = false;
+                        this.showOverlay();
+                        if (this.bestScore === null || this.shots < this.bestScore) {
+                            this.bestScore = this.shots;
+                        }
+                        this.updateUI();
+                    }
+                    return;
+                }
+
                 if (!this.ball.isMoving) return;
 
                 // Apply Gaussian Gravity Well
@@ -524,24 +546,30 @@
                 if (this.ball.y < this.ball.radius) { this.ball.y = this.ball.radius; this.ball.vy *= -0.8; }
                 if (this.ball.y > this.height - this.ball.radius) { this.ball.y = this.height - this.ball.radius; this.ball.vy *= -0.8; }
 
-                if (Math.hypot(this.ball.vx, this.ball.vy) < this.minVelocity) {
+                // Check Hole Capture
+                const currentSpeed = Math.hypot(this.ball.vx, this.ball.vy);
+                const distToHole = Math.hypot(this.ball.x - this.hole.x, this.ball.y - this.hole.y);
+
+                if (distToHole < this.hole.radius && currentSpeed < this.maxHoleEntryVelocity) {
+                    this.isFalling = true;
+                    this.ball.isMoving = false;
+                    // Dont stop immediately, let animation handle it
+                }
+                else if (currentSpeed < this.minVelocity) {
                     this.ball.vx = 0;
                     this.ball.vy = 0;
                     this.ball.isMoving = false;
-                    this.checkHole();
+                    // No checkHole here, only happen if strictly stopped inside (rare) or missed
                 }
             }
 
             checkHole() {
-                const dist = Math.hypot(this.ball.x - this.hole.x, this.ball.y - this.hole.y);
-                if (dist < this.hole.radius) {
-                    this.isPlaying = false;
-                    this.showOverlay();
-                    if (this.bestScore === null || this.shots < this.bestScore) {
-                        this.bestScore = this.shots;
-                    }
-                    this.updateUI();
+                this.isPlaying = false;
+                this.showOverlay();
+                if (this.bestScore === null || this.shots < this.bestScore) {
+                    this.bestScore = this.shots;
                 }
+                this.updateUI();
             }
 
             showOverlay() {

@@ -45,6 +45,9 @@ class GolfEnv(gym.Env):
         self.well_depth = 20.0
         self.gravity_scale = 1.0
         
+        # Hole capture
+        self.max_hole_entry_velocity = 20.0
+        
         # Max steps per episode
         self.max_steps = 20
         self.current_step = 0
@@ -120,7 +123,10 @@ class GolfEnv(gym.Env):
         # Simulate ball movement
         velocity = np.array([vx, vy], dtype=np.float32)
         
-        while np.linalg.norm(velocity) > self.min_velocity:
+        sim_steps = 0
+        while np.linalg.norm(velocity) > self.min_velocity and sim_steps < 100:
+            sim_steps += 1
+            
             # Apply Gaussian Gravity Well
             d_vec = self.hole_pos - self.ball_pos
             dist = np.linalg.norm(d_vec)
@@ -159,8 +165,10 @@ class GolfEnv(gym.Env):
         distance = np.linalg.norm(self.ball_pos - self.hole_pos)
         max_distance = np.sqrt(self.width**2 + self.height**2)
         
-        # Check if ball is in hole
-        in_hole = distance < self.hole_radius
+        # Check if ball is in hole (within radius AND slow enough)
+        # Note: Velocity might be high from gravity well accel, so we need some tolerance
+        current_speed = np.linalg.norm(velocity)
+        in_hole = distance < self.hole_radius and current_speed < self.max_hole_entry_velocity
         
         # Calculate reward
         if in_hole:

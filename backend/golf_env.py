@@ -40,9 +40,10 @@ class GolfEnv(gym.Env):
         self.ball_radius = 8
         self.hole_radius = 14
 
-        # Slope Physics (Gravity Well)
-        self.slope_radius = 60
-        self.slope_gravity = 0.2
+        # Gaussian Gravity Well Parameters
+        self.well_sigma = 40.0
+        self.well_depth = 20.0
+        self.gravity_scale = 1.0
         
         # Max steps per episode
         self.max_steps = 20
@@ -120,17 +121,19 @@ class GolfEnv(gym.Env):
         velocity = np.array([vx, vy], dtype=np.float32)
         
         while np.linalg.norm(velocity) > self.min_velocity:
-            # Apply slope physics (gravity well around hole)
+            # Apply Gaussian Gravity Well
             d_vec = self.hole_pos - self.ball_pos
             dist = np.linalg.norm(d_vec)
             
-            if dist < self.slope_radius:
-                # Force direction (normalized vector to hole)
-                force_dir = d_vec / (dist + 1e-6)
-                # Force magnitude (stronger closer to hole)
-                force_mag = self.slope_gravity * (1 - dist / self.slope_radius)
+            # Derivative of Gaussian: d/dr (-Depth * exp(-r^2 / 2sigma^2))
+            # = (r * Depth / sigma^2) * exp(-r^2 / 2sigma^2)
+            if dist < self.well_sigma * 3:  # Optimization: only calculate if close enough
+                exp_factor = np.exp(- (dist**2) / (2 * self.well_sigma**2))
+                force_mag = (dist * self.well_depth / (self.well_sigma**2)) * exp_factor * self.gravity_scale
                 
-                velocity += force_dir * force_mag
+                # Force direction is towards hole (normalized d_vec)
+                force_vec = (d_vec / (dist + 1e-6)) * force_mag
+                velocity += force_vec
 
             # Update position
             self.ball_pos += velocity

@@ -331,8 +331,9 @@
                 // Physics
                 this.friction = 0.985;
                 this.minVelocity = 0.1;
-                this.slopeRadius = 60;
-                this.slopeGravity = 0.2;
+                this.wellSigma = 40.0;
+                this.wellDepth = 20.0;
+                this.gravityScale = 1.0;
 
                 // ONNX
                 this.session = null;
@@ -498,13 +499,15 @@
             update() {
                 if (!this.ball.isMoving) return;
 
-                // Apply slope physics
+                // Apply Gaussian Gravity Well
                 const dx = this.hole.x - this.ball.x;
                 const dy = this.hole.y - this.ball.y;
                 const dist = Math.hypot(dx, dy);
 
-                if (dist < this.slopeRadius) {
-                    const forceMag = this.slopeGravity * (1 - dist / this.slopeRadius);
+                if (dist < this.wellSigma * 3) {
+                    const expFactor = Math.exp(- (dist * dist) / (2 * this.wellSigma * this.wellSigma));
+                    const forceMag = (dist * this.wellDepth / (this.wellSigma * this.wellSigma)) * expFactor * this.gravityScale;
+
                     const angle = Math.atan2(dy, dx);
                     this.ball.vx += Math.cos(angle) * forceMag;
                     this.ball.vy += Math.sin(angle) * forceMag;
@@ -592,14 +595,25 @@
                 ctx.fillStyle = '#22c55e';
                 ctx.fill();
 
-                // Slope Visual
-                const slopeGrad = ctx.createRadialGradient(this.hole.x, this.hole.y, this.hole.radius, this.hole.x, this.hole.y, this.slopeRadius);
-                slopeGrad.addColorStop(0, 'rgba(0,0,0,0.3)');
-                slopeGrad.addColorStop(1, 'rgba(0,0,0,0)');
-                ctx.beginPath();
-                ctx.arc(this.hole.x, this.hole.y, this.slopeRadius, 0, Math.PI * 2);
-                ctx.fillStyle = slopeGrad;
-                ctx.fill();
+                // Gaussian Well Visual (Contour Lines)
+                // Draw 5 contour lines representing depth
+                for (let i = 1; i <= 5; i++) {
+                    const depthRatio = i / 6; // 0.16 to 0.83
+                    // Solve for r: Z = -Depth * exp(-r^2 / 2sigma^2) -> r = sigma * sqrt(-2 * ln(Z/-Depth))
+                    // Let target Z = -Depth * ratio
+                    // ratio = exp(-r^2 / 2sigma^2) -> ln(ratio) = -r^2 / 2sigma^2 -> r = sigma * sqrt(-2 * ln(ratio))
+                    const r = this.wellSigma * Math.sqrt(-2 * Math.log(depthRatio * 0.1 + 0.9)); // Subtle gradient distribution
+                    // Actually, let's just draw fixed sigma multiples for clarity
+                    const radius = this.wellSigma * (0.5 + i * 0.5); // 1.0 sigma, 1.5 sigma...
+
+                    if (radius > 5 && radius < 200) {
+                        ctx.beginPath();
+                        ctx.arc(this.hole.x, this.hole.y, radius, 0, Math.PI * 2);
+                        ctx.strokeStyle = `rgba(0, 0, 0, ${0.15 - i * 0.02})`; // Fading out lines
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
 
                 // Hole
                 ctx.beginPath();

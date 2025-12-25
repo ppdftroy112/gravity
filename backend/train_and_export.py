@@ -57,12 +57,12 @@ def main():
             verbose=1
         )
     
-    # Train for 20,000 timesteps
+    # Train for 100,000 timesteps
     print("\n" + "="*50)
-    print("Starting training: 20,000 timesteps")
+    print("Starting training: 100,000 timesteps")
     print("="*50 + "\n")
     
-    model.learn(total_timesteps=20000, progress_bar=False)
+    model.learn(total_timesteps=100000, progress_bar=False)
     
     # Save model
     model.save(model_path)

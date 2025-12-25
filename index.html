@@ -362,23 +362,25 @@
                 const providers = ['webgl', 'wasm'];
                 let lastError = null;
 
+                // Enable debug mode for deeper logs in console
+                ort.env.debug = true;
+
                 for (const provider of providers) {
                     try {
-                        this.updateStatus('loading', `Trying ${provider.toUpperCase()} provider...`);
-                        console.log(`Attempting to load model with provider: ${provider}`);
+                        this.updateStatus('loading', `Trying ${provider.toUpperCase()}...`);
+                        console.log(`[ORT] Attempting provider: ${provider}`);
 
-                        // Ensure model is downloaded (only once)
                         if (!this.modelBuffer) {
                             this.updateStatus('loading', 'Downloading model...');
-                            const response = await fetch('./golf_model.onnx', { cache: 'no-cache' });
-                            if (!response.ok) throw new Error(`Model not found (404)`);
+                            // Added version param for extreme cache busting
+                            const response = await fetch('./golf_model_v2.onnx?v=2', { cache: 'no-cache' });
+                            if (!response.ok) throw new Error(`Model fetch failed: ${response.status}`);
                             this.modelBuffer = await response.arrayBuffer();
-                            if (this.modelBuffer.byteLength < 5000) throw new Error("Model file too small");
+                            console.log(`[ORT] Downloaded ${this.modelBuffer.byteLength} bytes`);
                         }
 
-                        this.updateStatus('loading', `Compiling (${provider.toUpperCase()})...`);
+                        this.updateStatus('loading', `Initializing ${provider.toUpperCase()}...`);
 
-                        // Try to create session with current provider
                         this.session = await ort.InferenceSession.create(this.modelBuffer, {
                             executionProviders: [provider],
                             graphOptimizationLevel: 'basic'
@@ -386,30 +388,32 @@
 
                         this.modelLoaded = true;
                         this.updateStatus('ready', `Model loaded (${provider.toUpperCase()})!`);
-                        console.log(`ONNX model loaded successfully with ${provider}`);
-                        return; // Success!
+                        console.log(`[ORT] Success with ${provider}`);
+                        return;
 
                     } catch (error) {
-                        console.warn(`${provider.toUpperCase()} failed:`, error);
+                        console.error(`[ORT] ${provider.toUpperCase()} failure:`, error);
                         lastError = error;
-                        // Continue to next provider
                     }
                 }
-
-                // If all providers failed
                 this.handleLoadError(lastError);
             }
 
             handleLoadError(error) {
-                console.error('All ONNX providers failed:', error);
+                console.error('[ORT] Critical: All fallback providers failed.', error);
                 let errorMsg = 'Model load failed.';
-                let msg = error ? (error.message || String(error)) : "Unknown error";
 
-                if (msg.includes('855')) errorMsg = `Initialization Error (${msg.split(' ').pop() || 'Internal'}).`;
-                else if (msg.includes('404')) errorMsg = 'Model file not found (404).';
-                else errorMsg = `Error: ${msg.substring(0, 40)}...`;
+                // Get most descriptive message
+                let msg = error ? (error.message || String(error)) : "Unknown Error";
+                if (typeof error === 'object' && error !== null) {
+                    console.dir(error); // Log full object for user to report
+                }
 
-                this.updateStatus('error', `${errorMsg} Human mode only.`);
+                if (msg.includes('855')) errorMsg = `Init Error ${msg.match(/\d+/)?.[0] || '855...'}`;
+                else if (msg.includes('404')) errorMsg = 'Model not found (404).';
+                else errorMsg = `Error: ${msg.substring(0, 35)}...`;
+
+                this.updateStatus('error', `${errorMsg} Try Ctrl+F5.`);
             }
 
             updateStatus(status, text) {

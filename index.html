@@ -355,47 +355,43 @@
                 try {
                     this.updateStatus('loading', 'Initializing ONNX Runtime...');
 
-                    // CRITICAL: Set WASM paths explicitly to CDN to avoid looking for .wasm files locally
+                    // CRITICAL: Force strictly single-threaded and non-SIMD for all browsers
                     ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/";
-
-                    // Optimization: Disable SIMD/Threads for maximum compatibility if hanging
                     ort.env.wasm.numThreads = 1;
                     ort.env.wasm.simd = false;
+                    ort.env.wasm.proxy = false; // Disable proxy to avoid worker-related overhead
 
                     this.updateStatus('loading', 'Downloading model...');
 
-                    const modelUrl = './golf_agent.onnx';
+                    // Rename file to bypass cache
+                    const modelUrl = './golf_model.onnx';
 
-                    // Add timeout promise
-                    const timeoutMs = 30000; // Increase to 30 seconds
+                    const timeoutMs = 30000;
                     const timeoutPromise = new Promise((_, reject) =>
                         setTimeout(() => reject(new Error(`Loading timed out after ${timeoutMs / 1000}s`)), timeoutMs)
                     );
 
-                    // Actual loading task
                     const loadTask = (async () => {
-                        const response = await fetch(modelUrl);
+                        const response = await fetch(modelUrl, { cache: 'no-cache' }); // Force no-cache on fetch
                         if (!response.ok) {
                             throw new Error(`Failed to fetch model file: ${response.status} ${response.statusText}`);
                         }
                         const modelBuffer = await response.arrayBuffer();
 
                         if (modelBuffer.byteLength < 1000) {
-                            throw new Error(`Model file is too small (${modelBuffer.byteLength} bytes). Possible download error.`);
+                            throw new Error(`Model file is too small (${modelBuffer.byteLength} bytes).`);
                         }
 
-                        this.updateStatus('loading', 'Compiling model (Basic mode)...');
+                        this.updateStatus('loading', 'Compiling model (Stable mode)...');
 
-                        // Create session with minimal optimizations for stability
                         const session = await ort.InferenceSession.create(modelBuffer, {
                             executionProviders: ['wasm'],
-                            graphOptimizationLevel: 'basic' // 'all' might hang on some devices
+                            graphOptimizationLevel: 'basic'
                         });
 
                         return session;
                     })();
 
-                    // Race between load and timeout
                     this.session = await Promise.race([loadTask, timeoutPromise]);
 
                     this.modelLoaded = true;
@@ -404,14 +400,20 @@
                 } catch (error) {
                     console.error('Failed to load ONNX model:', error);
                     let errorMsg = 'Model load failed.';
-                    const msg = (error && error.message) ? error.message : String(error);
+
+                    // Super robust error message extraction
+                    let msg = "Unknown error";
+                    if (typeof error === 'string') msg = error;
+                    else if (error && error.message) msg = error.message;
+                    else if (error) msg = JSON.stringify(error);
 
                     if (msg.includes('404')) errorMsg = 'Model file not found (404).';
                     else if (msg.includes('fetch')) errorMsg = 'Network error during fetch.';
                     else if (msg.includes('timed out')) errorMsg = 'Loading timed out.';
-                    else errorMsg = `Error: ${msg.substring(0, 40)}...`;
+                    else if (msg.includes('8558464')) errorMsg = 'WASM Initialization Error (8558464).';
+                    else errorMsg = `Error: ${msg.substring(0, 50)}...`;
 
-                    this.updateStatus('error', `${errorMsg} Human mode only.`);
+                    this.updateStatus('error', `${errorMsg} Try Hard Refresh (Ctrl+F5).`);
                 }
             }
 

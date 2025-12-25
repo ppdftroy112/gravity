@@ -360,11 +360,16 @@
                     ort.env.wasm.simd = true;
 
                     // Fetch model as ArrayBuffer for better compatibility
-                    const response = await fetch('./golf_agent.onnx');
+                    const modelUrl = './golf_agent.onnx';
+                    const response = await fetch(modelUrl);
                     if (!response.ok) {
-                        throw new Error('Failed to fetch model file');
+                        throw new Error(`Failed to fetch model file: ${response.status} ${response.statusText}`);
                     }
                     const modelBuffer = await response.arrayBuffer();
+
+                    if (modelBuffer.byteLength < 1000) {
+                        throw new Error(`Model file is too small (${modelBuffer.byteLength} bytes). Possible download error.`);
+                    }
 
                     this.session = await ort.InferenceSession.create(modelBuffer, {
                         executionProviders: ['wasm'],
@@ -376,7 +381,13 @@
                     console.log('ONNX model loaded successfully');
                 } catch (error) {
                     console.error('Failed to load ONNX model:', error);
-                    this.updateStatus('error', 'Model load failed. Human mode only.');
+                    // Show specific error in UI
+                    let errorMsg = 'Model load failed.';
+                    if (error.message.includes('404')) errorMsg = 'Model file not found (404).';
+                    else if (error.message.includes('fetch')) errorMsg = 'Network error during fetch.';
+                    else errorMsg = `Error: ${error.message.substring(0, 30)}...`;
+
+                    this.updateStatus('error', `${errorMsg} Human mode only.`);
                 }
             }
 

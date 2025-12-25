@@ -404,10 +404,12 @@
                 } catch (error) {
                     console.error('Failed to load ONNX model:', error);
                     let errorMsg = 'Model load failed.';
-                    if (error.message.includes('404')) errorMsg = 'Model file not found (404).';
-                    else if (error.message.includes('fetch')) errorMsg = 'Network error during fetch.';
-                    else if (error.message.includes('timed out')) errorMsg = 'Loading timed out.';
-                    else errorMsg = `Error: ${error.message.substring(0, 30)}...`;
+                    const msg = (error && error.message) ? error.message : String(error);
+
+                    if (msg.includes('404')) errorMsg = 'Model file not found (404).';
+                    else if (msg.includes('fetch')) errorMsg = 'Network error during fetch.';
+                    else if (msg.includes('timed out')) errorMsg = 'Loading timed out.';
+                    else errorMsg = `Error: ${msg.substring(0, 40)}...`;
 
                     this.updateStatus('error', `${errorMsg} Human mode only.`);
                 }

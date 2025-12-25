@@ -298,7 +298,14 @@
         </footer>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.0/dist/ort.min.js"></script>
     <script>
+        // Set environment variables BEFORE any other ORT calls
+        ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.0/dist/";
+        ort.env.wasm.numThreads = 1;
+        ort.env.wasm.simd = false;
+        ort.env.wasm.proxy = false;
+
         // ===========================
         // ONNX Golf Game - Static Version
         // ===========================
@@ -353,17 +360,15 @@
 
             async loadModel() {
                 try {
-                    this.updateStatus('loading', 'Initializing ONNX Runtime...');
+                    this.updateStatus('loading', 'Checking WASM connectivity...');
 
-                    // CRITICAL: Force strictly single-threaded and non-SIMD for all browsers
-                    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/";
-                    ort.env.wasm.numThreads = 1;
-                    ort.env.wasm.simd = false;
-                    ort.env.wasm.proxy = false; // Disable proxy to avoid worker-related overhead
+                    // Verify WASM file is reachable from CDN
+                    const wasmCheck = await fetch(`${ort.env.wasm.wasmPaths}ort-wasm.wasm`, { method: 'HEAD' });
+                    if (!wasmCheck.ok) {
+                        throw new Error(`WASM binary not found at CDN: ${wasmCheck.status}`);
+                    }
 
                     this.updateStatus('loading', 'Downloading model...');
-
-                    // Rename file to bypass cache
                     const modelUrl = './golf_model.onnx';
 
                     const timeoutMs = 30000;
@@ -372,14 +377,14 @@
                     );
 
                     const loadTask = (async () => {
-                        const response = await fetch(modelUrl, { cache: 'no-cache' }); // Force no-cache on fetch
+                        const response = await fetch(modelUrl, { cache: 'no-cache' });
                         if (!response.ok) {
-                            throw new Error(`Failed to fetch model file: ${response.status} ${response.statusText}`);
+                            throw new Error(`Model file not found (404/Network Error)`);
                         }
                         const modelBuffer = await response.arrayBuffer();
 
-                        if (modelBuffer.byteLength < 1000) {
-                            throw new Error(`Model file is too small (${modelBuffer.byteLength} bytes).`);
+                        if (modelBuffer.byteLength < 5000) {
+                            throw new Error(`Model file corrupted or too small (${modelBuffer.byteLength} bytes).`);
                         }
 
                         this.updateStatus('loading', 'Compiling model (Stable mode)...');
@@ -401,16 +406,15 @@
                     console.error('Failed to load ONNX model:', error);
                     let errorMsg = 'Model load failed.';
 
-                    // Super robust error message extraction
                     let msg = "Unknown error";
                     if (typeof error === 'string') msg = error;
                     else if (error && error.message) msg = error.message;
-                    else if (error) msg = JSON.stringify(error);
+                    else if (error) msg = String(error);
 
-                    if (msg.includes('404')) errorMsg = 'Model file not found (404).';
-                    else if (msg.includes('fetch')) errorMsg = 'Network error during fetch.';
+                    if (msg.includes('WASM binary')) errorMsg = 'WASM loading failed (CDN error).';
+                    else if (msg.includes('not found')) errorMsg = 'Model file not found (404).';
                     else if (msg.includes('timed out')) errorMsg = 'Loading timed out.';
-                    else if (msg.includes('8558464')) errorMsg = 'WASM Initialization Error (8558464).';
+                    else if (msg.includes('8557624') || msg.includes('8558464')) errorMsg = 'WASM Internal Error (Memory).';
                     else errorMsg = `Error: ${msg.substring(0, 50)}...`;
 
                     this.updateStatus('error', `${errorMsg} Try Hard Refresh (Ctrl+F5).`);

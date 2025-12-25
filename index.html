@@ -353,38 +353,60 @@
 
             async loadModel() {
                 try {
-                    this.updateStatus('loading', 'Loading ONNX model...');
+                    this.updateStatus('loading', 'Initializing ONNX Runtime...');
 
-                    // Configure ONNX Runtime Web for better compatibility
-                    ort.env.wasm.numThreads = 1;
-                    ort.env.wasm.simd = true;
+                    // CRITICAL: Set WASM paths explicitly to CDN to avoid looking for .wasm files locally
+                    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/";
 
-                    // Fetch model as ArrayBuffer for better compatibility
+                    // Optional: Disable SIMD/Threads if causing issues
+                    // ort.env.wasm.numThreads = 1;
+                    // ort.env.wasm.simd = false; 
+
+                    this.updateStatus('loading', 'Downloading model...');
+
                     const modelUrl = './golf_agent.onnx';
-                    const response = await fetch(modelUrl);
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch model file: ${response.status} ${response.statusText}`);
-                    }
-                    const modelBuffer = await response.arrayBuffer();
 
-                    if (modelBuffer.byteLength < 1000) {
-                        throw new Error(`Model file is too small (${modelBuffer.byteLength} bytes). Possible download error.`);
-                    }
+                    // Add timeout promise
+                    const timeoutMs = 20000; // 20 seconds
+                    const timeoutPromise = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error(`Loading timed out after ${timeoutMs / 1000}s`)), timeoutMs)
+                    );
 
-                    this.session = await ort.InferenceSession.create(modelBuffer, {
-                        executionProviders: ['wasm'],
-                        graphOptimizationLevel: 'all'
-                    });
+                    // Actual loading task
+                    const loadTask = (async () => {
+                        const response = await fetch(modelUrl);
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch model file: ${response.status} ${response.statusText}`);
+                        }
+                        const modelBuffer = await response.arrayBuffer();
+
+                        if (modelBuffer.byteLength < 1000) {
+                            throw new Error(`Model file is too small (${modelBuffer.byteLength} bytes). Possible download error.`);
+                        }
+
+                        this.updateStatus('loading', 'Compiling model (this may take a moment)...');
+
+                        // Create session
+                        const session = await ort.InferenceSession.create(modelBuffer, {
+                            executionProviders: ['wasm'],
+                            graphOptimizationLevel: 'all'
+                        });
+
+                        return session;
+                    })();
+
+                    // Race between load and timeout
+                    this.session = await Promise.race([loadTask, timeoutPromise]);
 
                     this.modelLoaded = true;
                     this.updateStatus('ready', 'Model loaded! Ready to play.');
                     console.log('ONNX model loaded successfully');
                 } catch (error) {
                     console.error('Failed to load ONNX model:', error);
-                    // Show specific error in UI
                     let errorMsg = 'Model load failed.';
                     if (error.message.includes('404')) errorMsg = 'Model file not found (404).';
                     else if (error.message.includes('fetch')) errorMsg = 'Network error during fetch.';
+                    else if (error.message.includes('timed out')) errorMsg = 'Loading timed out.';
                     else errorMsg = `Error: ${error.message.substring(0, 30)}...`;
 
                     this.updateStatus('error', `${errorMsg} Human mode only.`);

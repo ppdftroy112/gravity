@@ -359,66 +359,57 @@
             }
 
             async loadModel() {
-                try {
-                    this.updateStatus('loading', 'Checking WASM connectivity...');
+                const providers = ['webgl', 'wasm'];
+                let lastError = null;
 
-                    // Verify WASM file is reachable from CDN
-                    const wasmCheck = await fetch(`${ort.env.wasm.wasmPaths}ort-wasm.wasm`, { method: 'HEAD' });
-                    if (!wasmCheck.ok) {
-                        throw new Error(`WASM binary not found at CDN: ${wasmCheck.status}`);
-                    }
+                for (const provider of providers) {
+                    try {
+                        this.updateStatus('loading', `Trying ${provider.toUpperCase()} provider...`);
+                        console.log(`Attempting to load model with provider: ${provider}`);
 
-                    this.updateStatus('loading', 'Downloading model...');
-                    const modelUrl = './golf_model.onnx';
-
-                    const timeoutMs = 30000;
-                    const timeoutPromise = new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error(`Loading timed out after ${timeoutMs / 1000}s`)), timeoutMs)
-                    );
-
-                    const loadTask = (async () => {
-                        const response = await fetch(modelUrl, { cache: 'no-cache' });
-                        if (!response.ok) {
-                            throw new Error(`Model file not found (404/Network Error)`);
-                        }
-                        const modelBuffer = await response.arrayBuffer();
-
-                        if (modelBuffer.byteLength < 5000) {
-                            throw new Error(`Model file corrupted or too small (${modelBuffer.byteLength} bytes).`);
+                        // Ensure model is downloaded (only once)
+                        if (!this.modelBuffer) {
+                            this.updateStatus('loading', 'Downloading model...');
+                            const response = await fetch('./golf_model.onnx', { cache: 'no-cache' });
+                            if (!response.ok) throw new Error(`Model not found (404)`);
+                            this.modelBuffer = await response.arrayBuffer();
+                            if (this.modelBuffer.byteLength < 5000) throw new Error("Model file too small");
                         }
 
-                        this.updateStatus('loading', 'Compiling model (Stable mode)...');
+                        this.updateStatus('loading', `Compiling (${provider.toUpperCase()})...`);
 
-                        const session = await ort.InferenceSession.create(modelBuffer, {
-                            executionProviders: ['wasm'],
+                        // Try to create session with current provider
+                        this.session = await ort.InferenceSession.create(this.modelBuffer, {
+                            executionProviders: [provider],
                             graphOptimizationLevel: 'basic'
                         });
 
-                        return session;
-                    })();
+                        this.modelLoaded = true;
+                        this.updateStatus('ready', `Model loaded (${provider.toUpperCase()})!`);
+                        console.log(`ONNX model loaded successfully with ${provider}`);
+                        return; // Success!
 
-                    this.session = await Promise.race([loadTask, timeoutPromise]);
-
-                    this.modelLoaded = true;
-                    this.updateStatus('ready', 'Model loaded! Ready to play.');
-                    console.log('ONNX model loaded successfully');
-                } catch (error) {
-                    console.error('Failed to load ONNX model:', error);
-                    let errorMsg = 'Model load failed.';
-
-                    let msg = "Unknown error";
-                    if (typeof error === 'string') msg = error;
-                    else if (error && error.message) msg = error.message;
-                    else if (error) msg = String(error);
-
-                    if (msg.includes('WASM binary')) errorMsg = 'WASM loading failed (CDN error).';
-                    else if (msg.includes('not found')) errorMsg = 'Model file not found (404).';
-                    else if (msg.includes('timed out')) errorMsg = 'Loading timed out.';
-                    else if (msg.includes('8557624') || msg.includes('8558464')) errorMsg = 'WASM Internal Error (Memory).';
-                    else errorMsg = `Error: ${msg.substring(0, 50)}...`;
-
-                    this.updateStatus('error', `${errorMsg} Try Hard Refresh (Ctrl+F5).`);
+                    } catch (error) {
+                        console.warn(`${provider.toUpperCase()} failed:`, error);
+                        lastError = error;
+                        // Continue to next provider
+                    }
                 }
+
+                // If all providers failed
+                this.handleLoadError(lastError);
+            }
+
+            handleLoadError(error) {
+                console.error('All ONNX providers failed:', error);
+                let errorMsg = 'Model load failed.';
+                let msg = error ? (error.message || String(error)) : "Unknown error";
+
+                if (msg.includes('855')) errorMsg = `Initialization Error (${msg.split(' ').pop() || 'Internal'}).`;
+                else if (msg.includes('404')) errorMsg = 'Model file not found (404).';
+                else errorMsg = `Error: ${msg.substring(0, 40)}...`;
+
+                this.updateStatus('error', `${errorMsg} Human mode only.`);
             }
 
             updateStatus(status, text) {

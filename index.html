@@ -358,16 +358,16 @@
                     // CRITICAL: Set WASM paths explicitly to CDN to avoid looking for .wasm files locally
                     ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/";
 
-                    // Optional: Disable SIMD/Threads if causing issues
-                    // ort.env.wasm.numThreads = 1;
-                    // ort.env.wasm.simd = false; 
+                    // Optimization: Disable SIMD/Threads for maximum compatibility if hanging
+                    ort.env.wasm.numThreads = 1;
+                    ort.env.wasm.simd = false;
 
                     this.updateStatus('loading', 'Downloading model...');
 
                     const modelUrl = './golf_agent.onnx';
 
                     // Add timeout promise
-                    const timeoutMs = 20000; // 20 seconds
+                    const timeoutMs = 30000; // Increase to 30 seconds
                     const timeoutPromise = new Promise((_, reject) =>
                         setTimeout(() => reject(new Error(`Loading timed out after ${timeoutMs / 1000}s`)), timeoutMs)
                     );
@@ -384,12 +384,12 @@
                             throw new Error(`Model file is too small (${modelBuffer.byteLength} bytes). Possible download error.`);
                         }
 
-                        this.updateStatus('loading', 'Compiling model (this may take a moment)...');
+                        this.updateStatus('loading', 'Compiling model (Basic mode)...');
 
-                        // Create session
+                        // Create session with minimal optimizations for stability
                         const session = await ort.InferenceSession.create(modelBuffer, {
                             executionProviders: ['wasm'],
-                            graphOptimizationLevel: 'all'
+                            graphOptimizationLevel: 'basic' // 'all' might hang on some devices
                         });
 
                         return session;
